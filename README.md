@@ -3,10 +3,10 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-blueviolet)](https://claude.ai/code)
 
-> Custom slash commands for [Claude Code](https://claude.ai/code) - Anthropic's AI coding assistant CLI.
+> Custom slash commands and skills for [Claude Code](https://claude.ai/code) - Anthropic's AI coding assistant CLI.
 > Automate GitHub issue workflows, codebase exploration, and session handoffs.
 
-A small collection of battle-tested Claude Code commands for structured development workflows.
+A small collection of battle-tested Claude Code commands and skills for structured development workflows.
 
 ## Why use it
 
@@ -17,27 +17,31 @@ A small collection of battle-tested Claude Code commands for structured developm
 
 ## Install
 
-1) Global (all projects)
+1) Global (all projects) — commands and skills
 
 ```bash
 git clone https://github.com/efimsky/ai-code-ninja.git
-mkdir -p ~/.claude/commands
+mkdir -p ~/.claude/commands ~/.claude/skills
 cp ai-code-ninja/commands/*.md ~/.claude/commands/
+cp -r ai-code-ninja/skills/* ~/.claude/skills/
 ```
 
 2) Project-only
 
 ```bash
-mkdir -p .claude/commands
+mkdir -p .claude/commands .claude/skills
 cp path/to/ai-code-ninja/commands/*.md .claude/commands/
+cp -r path/to/ai-code-ninja/skills/* .claude/skills/
 ```
 
-3) Single command
+3) Single command (without skills)
 
 ```bash
 curl -o ~/.claude/commands/gh_issue.md \
   https://raw.githubusercontent.com/efimsky/ai-code-ninja/main/commands/gh_issue.md
 ```
+
+> 💡 `/gh_issue` references the **`verification-before-completion`** skill — install the skills directory alongside the commands for the full quality-gate behavior. Without the skill, the command falls back to an inline summary of the rule.
 
 ## Quick start
 
@@ -128,13 +132,35 @@ Usage:
 /handoff
 ```
 
+## Skills
+
+### `verification-before-completion`
+
+Always-on quality gate that fires whenever Claude is about to claim work is "done", "fixed", "tests pass", "ready", etc. Enforces a four-step proof: name the proving command, run it fresh, read full output and exit code, match the output to the claim.
+
+Why it's a skill (not just part of `/gh_issue`):
+- Auto-triggers across **all** your work, not just GitHub issue workflows
+- Installed once, applies in ad-hoc bug-fix conversations, refactors, and one-off scripts
+- Includes a required-evidence-by-claim-type table and an extensive rationalization-rejection table
+
+Install (global):
+
+```bash
+mkdir -p ~/.claude/skills
+cp -r ai-code-ninja/skills/* ~/.claude/skills/
+```
+
+Inspired by the [Superpowers](https://github.com/obra/superpowers) pattern of pulling cross-cutting discipline rules out of workflows and into composable skills.
+
 ## Requirements (for `/gh_issue`)
 
 Required:
-- GitHub CLI (`gh`) - issue fetching and PR creation ([install guide](https://cli.github.com/))
-- GitHub MCP Server - GitHub API integration ([setup docs](https://github.com/modelcontextprotocol/servers/tree/main/src/github))
+- GitHub CLI (`gh`) - issue fetching, PR creation, and all GitHub interactions ([install guide](https://cli.github.com/))
 - `code-review` plugin - Phase 5 code review (`claude plugins:install code-review`)
 - `code-simplifier` plugin - Phase 5 code simplification (`claude plugins:install code-simplifier`)
+
+Recommended:
+- `verification-before-completion` skill (bundled in this repo's `skills/` directory) - quality gate that catches false-completion claims
 
 Optional:
 - `frontend-design` plugin - UI/UX planning for frontend issues (`claude plugins:install frontend-design`)

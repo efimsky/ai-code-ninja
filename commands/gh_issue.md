@@ -41,43 +41,16 @@ Phase Z: [Name] — pending
 
 ## ⚖️ Verification Iron Law (always-on)
 
-This rule fires **at every phase**, not just before the PR. The moment you are about to claim *any* of these:
+This workflow assumes the **`verification-before-completion`** skill is installed and applies it at every phase. Whenever you are about to claim "done", "fixed", "implemented", "tests pass", "should work", "ready", or "complete":
 
-> "done" · "fixed" · "implemented" · "tests pass" · "should work" · "works now" · "ready" · "complete"
+1. **Invoke** the `Skill` tool with `skill: "verification-before-completion"` to load the full rule, OR
+2. **Apply the four-step proof inline:** name the proving command → run it fresh → read full output and exit code → match output to claim.
 
-…you MUST first complete the four-step proof:
+If you cannot produce evidence, replace the success word with what's actually true (e.g., *"unit tests pass; integration suite not run"*, *"the failing test now passes; the original symptom is not yet retested"*).
 
-1. **Name the proving command.** State exactly what command, with arguments, will demonstrate the claim.
-2. **Run it fresh.** Don't recall earlier output. Re-run now.
-3. **Read the full output and exit code.** Not just the last line. Look for warnings, skipped tests, silent fallbacks, exit code ≠ 0.
-4. **Match output to the claim.** If the output doesn't directly evidence the claim, the claim is invalid.
-
-If you cannot produce evidence, replace the success word with what's actually true: *"the code compiles, but I haven't run it"*, *"unit tests pass; integration suite not run"*, *"the failing test now passes; the original symptom is not yet retested"*.
-
-### Required evidence by claim type
-
-| Claim | Required evidence |
-|-------|-------------------|
-| "Bug fixed" | A test that reproduces the **original reported symptom** passes. Not a similar test — the original symptom. |
-| "Feature implemented" | Tests cover acceptance criteria from the issue, line-by-line. All pass. |
-| "Tests pass" | Full test command output + exit code 0, captured this turn. |
-| "Refactor safe" | Pre-refactor and post-refactor test output, both green. |
-| "Works in production-like env" | Docker / staging run output showing the actual user-facing behavior. |
-| "Requirements met" | Issue body / acceptance criteria walked through point-by-point with evidence per point. |
-
-### Common rationalizations to reject
-
-| Excuse | Reality |
-|--------|---------|
-| "Should work now" | Then run it. Belief is not evidence. |
-| "I'm confident" | Confidence is not output. |
-| "The agent reported success" | Agents lie. Verify the artifact, not the report. |
-| "Manually tested earlier" | Ad-hoc ≠ systematic. No record, can't re-run, doesn't count. |
-| "Tests pass" (without showing the run) | Then the run takes 10 seconds — do it. |
-| "It's a tiny change" | Tiny changes break things. Run the proof. |
-| "We're behind schedule" | A false "done" claim costs more than 30 seconds of verification. |
-
-> 💡 This rule supersedes phase boundaries. If Phase 4 says "commit when green" and you haven't watched it green this turn, you are not green.
+> 💡 This rule supersedes phase boundaries. If Phase 4 says "commit when green" and you haven't watched it green *this turn*, you are not green.
+>
+> 🛠️ If the skill is not installed, see `skills/verification-before-completion/SKILL.md` in the [ai-code-ninja repo](https://github.com/efimsky/ai-code-ninja) — install it once and it will auto-trigger across all your work, not just inside `/gh_issue`.
 
 ---
 
