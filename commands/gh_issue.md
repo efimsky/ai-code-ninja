@@ -1,6 +1,6 @@
 ---
 description: Complete GitHub issue workflow with structured phases, quality gates, and progress tracking
-allowed-tools: Task, Bash, Read, Edit, Write, Glob, Grep, TodoWrite, AskUserQuestion, mcp__github__*, WebFetch, Skill
+allowed-tools: Agent, Bash, Read, Edit, Write, Glob, Grep, TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop, AskUserQuestion, EnterPlanMode, ExitPlanMode, Monitor, WebFetch, Skill
 model: opus
 argument-hint: <ISSUE_URL_OR_NUMBER>
 ---
@@ -13,46 +13,48 @@ Work on the GitHub issue: $ARGUMENTS
 
 ## State Tracking
 
-**CRITICAL**: Maintain workflow state using TodoWrite throughout ALL phases.
+**CRITICAL**: Maintain workflow state using the task tools (`TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`) throughout ALL phases.
 
 ### At Start of Each Phase
-Update todos to reflect current phase and pending tasks:
+Use `TaskCreate` to register tasks for the upcoming phase, and `TaskUpdate` to flip status as you progress. Mark each task `completed` as soon as it's done — don't batch.
+
 ```
 Phase X: [Phase Name]
-- [ ] Task 1
-- [ ] Task 2
+- pending: Task 1
+- pending: Task 2
 ```
 
 ### When User Asks Questions
 1. Answer the question
-2. Immediately check TodoWrite for current state
-3. Resume from the last incomplete task
+2. Call `TaskList` to recover current state
+3. Resume from the last `in_progress`/`pending` task and announce which one
 
 ### Phase Checkpoint Format
-After completing each phase, update todos:
+After completing each phase, the task list should look like:
 ```
-✅ Phase X: [Name] - COMPLETE
-🔄 Phase Y: [Name] - IN PROGRESS
-⏳ Phase Z: [Name] - PENDING
+Phase X: [Name] — all tasks completed
+Phase Y: [Name] — in_progress
+Phase Z: [Name] — pending
 ```
 
 ---
 
 ## Phase 0: Validation & Setup
 
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
 ### Issue Validation
-1. **Parse and validate** the issue URL  or number
-2. **Fetch issue details** using GitHub MCP tools:
-    - Title, description, labels, assignees
-    - Linked PRs, parent/child issues, blockers
-    - Comments and discussion history
+1. **Parse and validate** the issue URL or number
+2. **Fetch issue details** using the `gh` CLI:
+    ```bash
+    gh issue view <NUMBER> --json number,title,body,state,labels,assignees,comments,closedByPullRequestsReferences
+    ```
+    Capture: title, description, labels, assignees, linked PRs, comments and discussion history.
 3. **Pre-flight checks**:
     - Confirm issue is OPEN (abort if closed)
     - Check if assigned to someone else (warn if so)
-    - Detect existing worktree/branch for this issue (offer resume)
-    - Look for blocking issues or dependencies
+    - Detect existing worktree/branch for this issue: `git worktree list` + `git branch --list 'feature/issue-<NUMBER>-*'`
+    - Look for blocking issues or dependencies (scan body and comments for `blocked by #N`, `depends on #N`)
 
 ### Resume Detection
 If existing work detected:
@@ -76,7 +78,7 @@ Parse labels to determine approach:
 
 > 🔒 **Mode**: Read-only exploration. No file modifications allowed.
 >
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
 ### Deep Dive
 1. **Understand the requirement**:
@@ -96,14 +98,17 @@ Parse labels to determine approach:
     - Understand data flow and dependencies
 
 ### Clarification Checkpoint
-- You must clarify questions if ANYTHING is unclear using the AskUserQuestionTool:
-- Expected behavior or edge cases
+
+If ANYTHING is unclear, you MUST resolve it before leaving Phase 1. Use the **`AskUserQuestion`** tool — not free-text prompts — for every clarification. Batch related questions into a single tool call (1–4 questions per call, each with 2–4 mutually exclusive options). Use `multiSelect: true` when answers aren't mutually exclusive, and use the `preview` field when comparing concrete artifacts (e.g., two API shapes, two UI layouts).
+
+Cover at minimum:
+- Expected behavior and edge cases
 - Technical approach preferences
-- Priority or scope constraints
-- UI & UX
-- Concerns
-- Tradeoffs
-Be very in-depth and keep on interviewing me continually until it's complete. Then capture this in the issue.
+- Priority and scope constraints
+- UI & UX (for frontend work)
+- Tradeoffs and concerns
+
+Keep interviewing until you can describe the solution end-to-end without hand-waving. Then capture the resolved decisions in a comment on the issue (`gh issue comment <NUMBER>`).
 
 ### Complexity Assessment
 After understanding, provide:
@@ -121,11 +126,30 @@ Type: [Backend | Frontend | Full-stack | Infra]
 
 ## Phase 2: Planning & Design
 
-> 📝 **Mode**: Planning mode. Memory writes allowed.
+> 📝 **Mode**: Planning. Memory writes allowed; no source-file edits yet.
 >
 > 💡 For complex issues, use `/ultrathink` before finalizing the implementation plan.
 >
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
+
+### Delegate to the `Plan` subagent
+
+For non-trivial issues (Medium or Complex per the Phase 1 assessment), delegate the implementation plan to the dedicated `Plan` subagent via the `Agent` tool:
+
+```
+Agent({
+  subagent_type: "Plan",
+  description: "Implementation plan for issue #<NUMBER>",
+  prompt: "<self-contained brief: issue summary, acceptance criteria, affected
+           areas from Phase 1, constraints surfaced in clarification, and the
+           Test Strategy notes from below. Ask for a step-by-step plan, files
+           to touch, test cases, and architectural tradeoffs to flag.>"
+})
+```
+
+The `Plan` subagent is read-only, returns a step-by-step plan, identifies critical files, and considers architectural tradeoffs. Treat its output as a draft — review it against the conventions you observed in Phase 1, then merge it into the Implementation Plan structure below before posting.
+
+For Simple issues, write the plan inline without delegating.
 
 ### Extended Thinking (Opus Only)
 
@@ -146,7 +170,7 @@ For complex planning decisions, Claude can engage deeper reasoning using extende
 - Planning migrations with breaking changes
 - Complex dependency analysis
 
-> ⚠️ **Note**: Extended thinking is only available on Opus. If you've switched to Sonnet for implementation, switch back to Opus (`/model opus`) for complex planning decisions.
+> ⚠️ **Note**: Extended thinking is most effective on Opus 4.7. If you've switched to Sonnet 4.6 or Haiku 4.5 for execution, switch back to Opus (`/model opus`) before using `think harder` / `ultrathink` for complex planning decisions.
 
 ### Design Considerations
 
@@ -156,7 +180,7 @@ For complex planning decisions, Claude can engage deeper reasoning using extende
 - Check: configuration changes, breaking changes to interfaces
 
 **For Frontend Changes**:
-- You MUST invoke `frontend-design:frontend-design` skill for UI/UX design before implementation
+- You MUST invoke the `Skill` tool with `skill: "frontend-design:frontend-design"` for UI/UX design before implementation
 - Consider: responsive behavior, accessibility
 - Follow project's design system/style guide if available
 
@@ -240,24 +264,27 @@ For each task requiring tests:
 
 ## Phase 3: Plan Review & Approval
 
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
+
+### Enter Plan Mode
+
+Call `EnterPlanMode` at the start of this phase. Plan mode is a first-class harness state where Claude cannot edit files — it forces the conversation into review-and-approve before implementation. While in plan mode you may still read files, run read-only commands, and use `AskUserQuestion` for last-mile clarifications.
 
 ### Post Plan to Issue
-1. Format the plan as a GitHub comment with collapsible sections
+1. Format the plan as a GitHub comment with collapsible sections (`<details>` blocks for long sections)
 2. Include complexity assessment and affected areas
 3. Tag relevant stakeholders if mentioned in issue
+4. Post via `gh issue comment <NUMBER> --body-file <path>` (use a temp file to preserve formatting)
 
 ### Approval Gate
-```
-📋 Plan posted to issue #<NUMBER>
 
-Please review the implementation plan on GitHub and confirm:
-→ "proceed" - Start implementation
-→ "revise [feedback]" - Update plan based on feedback
-→ "cancel" - Abort workflow
-```
+Call **`ExitPlanMode`** with the finalized plan as the argument. This is the canonical "ready for user approval" signal — the harness will surface the plan to the user and block until they approve, revise, or cancel.
 
-**⏸️ WAIT for explicit user approval before proceeding.**
+- Approved → proceed to Phase 4
+- Revise → stay in plan mode, update the plan, call `ExitPlanMode` again
+- Cancel → abort the workflow and clean up any task state via `TaskUpdate`
+
+**⏸️ Do not edit any source files until `ExitPlanMode` is approved.**
 
 ---
 
@@ -265,21 +292,37 @@ Please review the implementation plan on GitHub and confirm:
 
 > 🔧 **Mode**: Full file access. Execution mode.
 >
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
-- You MUST use a worktree and create a PR even for the smallest changes.
-- You SHOULD NEVER make commits directly to master.
+- You MUST work in an isolated worktree and create a PR even for the smallest changes.
+- You SHOULD NEVER make commits directly to `main`/`master`.
 
-### Worktree Setup
+### Worktree Setup — use built-in isolation
+
+Delegate the implementation to a worktree-isolated subagent via the `Agent` tool. This creates and tracks the worktree for you, and cleans it up automatically if no changes are made.
+
+```
+Agent({
+  subagent_type: "general-purpose",
+  description: "Implement issue #<NUMBER>",
+  isolation: "worktree",
+  prompt: "<self-contained brief: the approved plan from Phase 3, branch name
+           feature/issue-<NUMBER>-<short-description>, TDD protocol below,
+           commit message format, and the explicit instruction to push
+           and report the branch + final diff back.>"
+})
+```
+
+If you prefer to drive implementation yourself in the current session (e.g., for tight iteration with the user), fall back to a manual worktree:
+
 ```bash
-# Create isolated development environment
 git worktree add ../worktrees/issue-<NUMBER> -b feature/issue-<NUMBER>-<short-description>
 cd ../worktrees/issue-<NUMBER>
 ```
 
 ### Development Protocol
 
-1. **Use TodoWrite** to track all implementation tasks
+1. **Track tasks** with `TaskCreate`/`TaskUpdate` — flip each to `in_progress` when you start, `completed` the moment it's done
 2. **Follow TDD Protocol** (see below)
 3. **Commit incrementally** with conventional format:
    ```
@@ -289,7 +332,7 @@ cd ../worktrees/issue-<NUMBER>
    docs(scope): description     # Documentation
    test(scope): description     # Tests
    ```
-4. **Update issue** with progress comments at major milestones
+4. **Update issue** with progress comments at major milestones via `gh issue comment <NUMBER> --body "..."`
 
 ### TDD Protocol
 
@@ -386,7 +429,7 @@ Only after green:
 ```bash
 git add -A && git commit -m "test(scope): add test for [behavior]
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 **7. Repeat**
@@ -430,7 +473,7 @@ When user requests to skip or cancel a task:
 
 > ✅ **Mode**: Review and validation.
 >
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
 ### Code Review
 1. **Self-review** all changes for:
@@ -439,9 +482,11 @@ When user requests to skip or cancel a task:
    - Security vulnerabilities
    - Adherence to project conventions
 
-2. **You MUST invoke** `pr-review-toolkit:code-reviewer` skill for comprehensive review
+2. **You MUST invoke** the `Skill` tool with `skill: "pr-review-toolkit:code-reviewer"` for comprehensive review
 
-3. **You MUST invoke** `pr-review-toolkit:silent-failure-hunter` skill to identify inadequate error handling
+3. **You MUST invoke** the `Skill` tool with `skill: "pr-review-toolkit:silent-failure-hunter"` to identify inadequate error handling
+
+> 💡 These two reviews are independent — launch them in parallel by issuing both `Skill` tool calls in a single message.
 
 ### Address Review Findings
 - Fix all HIGH severity issues before proceeding
@@ -449,9 +494,9 @@ When user requests to skip or cancel a task:
 - LOW issues are optional but recommended
 
 ### Code Simplification
-After addressing review findings, invoke `code-simplifier:code-simplifier` to polish the implementation.
+After addressing review findings, invoke the `Skill` tool with `skill: "code-simplifier:code-simplifier"` to polish the implementation.
 
-The agent simplifies code for clarity, removes unnecessary complexity, and applies project conventions.
+The skill simplifies code for clarity, removes unnecessary complexity, and applies project conventions.
 
 **Commit simplifications** separately:
 ```
@@ -459,34 +504,41 @@ refactor(scope): code simplification
 ```
 
 ### Optional Quality Skills
-For specific change types, consider these additional skills:
-- `pr-review-toolkit:type-design-analyzer` - For changes introducing new types or modifying type structures
-- `pr-review-toolkit:comment-analyzer` - For changes with significant documentation or comment updates
+For specific change types, invoke these via the `Skill` tool:
+- `skill: "pr-review-toolkit:type-design-analyzer"` — for changes introducing new types or modifying type structures
+- `skill: "pr-review-toolkit:comment-analyzer"` — for changes with significant documentation or comment updates
 
 ---
 
 ## Phase 6: Testing
 
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
 ### Automated Tests
-Run the project's test suite:
+
+Run the project's test suite. For **fast** suites (under ~30s), invoke directly with `Bash`. For **long-running** suites, start them in the background and stream events with the **`Monitor`** tool — each stdout line becomes a notification, so you can react to failures as they happen instead of waiting for the whole run to finish.
+
 ```bash
-# Run unit tests
-# Run integration tests (if applicable)
+# Fast suite — direct
+npm test  # or project equivalent
+
+# Slow suite — run in background, then Monitor
+# 1. Bash: { command: "npm run test:integration", run_in_background: true }
+# 2. Monitor: stream the resulting shell ID until exit
 ```
 
+If a test fails mid-stream, you can stop tailing, fix the issue, and re-run — no need to wait for the full suite.
+
 ### Test Coverage Analysis
-After tests pass, invoke `pr-review-toolkit:pr-test-analyzer` to review test coverage quality and identify gaps.
+After tests pass, invoke the `Skill` tool with `skill: "pr-review-toolkit:pr-test-analyzer"` to review test coverage quality and identify gaps.
 
 ### Docker Testing (if applicable)
 ```bash
-# Build and run containers
+# Build and run containers (background)
 docker-compose up -d
 
-# Verify service health
-# Check logs
-docker logs <service-name>
+# Verify service health, then tail logs with Monitor
+# Monitor on: docker logs -f <service-name>
 
 # Cleanup
 docker-compose down
@@ -504,7 +556,7 @@ For UI changes, capture screenshot or GIF using Chrome for Claude browser automa
 
 ## Phase 7: Pull Request
 
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
 ### TDD Verification Gate
 
@@ -573,7 +625,7 @@ Add comment to issue with PR link and summary.
 
 ## Phase 8: Merge & Cleanup
 
-> 📌 **State**: Update TodoWrite with phase status and tasks before proceeding.
+> 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
 ### Await Merge Approval
 ```
@@ -603,7 +655,7 @@ After merge, update checkboxes in the issue body and implementation plan comment
 - Cancelled: `- [ ] Task` → `- [ ] ~~Task~~`
 
 **Update process**:
-1. Match checkboxes to TodoWrite status (fuzzy text matching is fine)
+1. Match checkboxes to task status from `TaskList` (fuzzy text matching is fine)
 2. Update implementation plan comment from Phase 3:
    ```bash
    gh api repos/{owner}/{repo}/issues/{number}/comments \
@@ -653,7 +705,7 @@ Use `Esc+Esc` or `/rewind` to checkpoint back to a known good state.
 
 ### If User Asks Questions Mid-Workflow
 1. Answer the user's question
-2. Check TodoWrite for current phase and task
+2. Call `TaskList` to recover current phase and task
 3. Announce: "Resuming Phase X, Task Y..."
 4. Continue from last incomplete item
 
@@ -680,46 +732,54 @@ git push
 
 ---
 
-## Context Health
-
-If context exceeds ~60%, use `/compact` or start a fresh conversation before proceeding to implementation phase.
-
----
-
 ## Model Management
 
-This workflow uses different models for different phases. Opus excels at planning and complex reasoning; Sonnet excels at execution speed.
+This workflow benefits from different models for different phases. The current Claude 4.X family:
+
+| Model | Strengths |
+|-------|-----------|
+| **Opus 4.7** | Deepest reasoning. Use for planning, architectural tradeoffs, complex debugging. |
+| **Sonnet 4.6** | Strong all-rounder, faster than Opus. Use for execution-heavy phases. |
+| **Haiku 4.5** | Fastest, cheapest. Use for mechanical tasks, simple lookups, cleanup. |
+
+> 💡 **Fast mode** (Opus 4.6 with faster output) is available via `/fast` and is a good middle ground when you want Opus-class reasoning with lower latency. It does not downgrade to a smaller model.
 
 ### Switching Models
 
 Use the `/model` command to switch:
 ```
-/model sonnet    # Switch to Sonnet for implementation
-/model opus      # Switch to Opus for complex decisions
+/model opus     # Switch to Opus 4.7 for complex decisions
+/model sonnet   # Switch to Sonnet 4.6 for implementation
+/model haiku    # Switch to Haiku 4.5 for fast, mechanical work
+/fast           # Toggle Fast mode (Opus 4.6, faster output)
 ```
 
 ### Model Selection by Phase
 
 | Phases | Recommended Model | Rationale |
 |--------|-------------------|-----------|
-| 0-3 (Validation → Approval) | Opus | Complex reasoning, architectural planning |
-| 4-8 (Implementation → Cleanup) | Sonnet | Faster execution, straightforward tasks |
+| 0–3 (Validation → Approval) | **Opus 4.7** | Complex reasoning, architectural planning |
+| 4–6 (Implementation → Testing) | **Sonnet 4.6** | Faster execution on a known plan |
+| 7–8 (PR → Cleanup) | **Haiku 4.5** or Sonnet 4.6 | Mechanical: PR body, status updates, worktree cleanup |
 
-### When to Stay on Opus
+### When to Stay on (or Return to) Opus 4.7
 
-Even during implementation phases, stay on (or switch back to) Opus for:
 - Unexpected architectural decisions mid-implementation
 - Complex debugging requiring deep analysis
 - Significant scope changes or pivots
 - Evaluating tradeoffs between multiple approaches
 
-### When to Use Sonnet
+### When to Use Sonnet 4.6
 
-Switch to Sonnet when:
 - The plan is approved and you're executing known tasks
 - Making straightforward code changes
 - Running tests and addressing simple failures
-- Creating PRs and performing cleanup
+
+### When to Use Haiku 4.5
+
+- Drafting PR descriptions from a clean diff
+- Updating issue checkboxes
+- Running cleanup commands and producing the final summary
 
 ---
 
@@ -727,15 +787,15 @@ Switch to Sonnet when:
 
 | Phase | Model | Mode | Key Actions |
 |-------|-------|------|-------------|
-| 0. Validation | Opus | Setup | Parse issue, detect resume, check blockers |
-| 1. Research | Opus | Read-only | Explore code, ask questions, assess complexity |
-| 2. Planning | Opus | Planning | Design review, test strategy, create implementation plan |
-| 3. Approval | Opus | Gate | Post plan, wait for user approval |
-| 4. Implementation | Sonnet | Execute | **TDD: RED→GREEN→REFACTOR**, incremental commits |
-| 5. Quality | Sonnet | Review | Code review, fix issues, code simplification |
-| 6. Testing | Sonnet | Test | Automated + Docker + manual verification |
-| 7. PR | Sonnet | Create | **TDD verification gate**, push, create PR |
-| 8. Cleanup | Sonnet | Gate | Merge, update task checkboxes, cleanup, summarize |
+| 0. Validation | Opus 4.7 | Setup | Parse issue (`gh issue view`), detect resume, check blockers |
+| 1. Research | Opus 4.7 | Read-only | Explore code, `AskUserQuestion`, assess complexity |
+| 2. Planning | Opus 4.7 | Planning | Delegate to `Plan` subagent, test strategy, draft plan |
+| 3. Approval | Opus 4.7 | Gate | `EnterPlanMode` → post plan → `ExitPlanMode` |
+| 4. Implementation | Sonnet 4.6 | Execute | `Agent` w/ `isolation: "worktree"`, **TDD: RED→GREEN→REFACTOR** |
+| 5. Quality | Sonnet 4.6 | Review | Parallel `Skill` invocations, fix issues, simplify |
+| 6. Testing | Sonnet 4.6 | Test | `Monitor` long suites, Docker + manual verification |
+| 7. PR | Haiku 4.5 / Sonnet 4.6 | Create | TDD verification gate, push, `gh pr create` |
+| 8. Cleanup | Haiku 4.5 / Sonnet 4.6 | Gate | Merge, update checkboxes, cleanup, summarize |
 
 ---
 
