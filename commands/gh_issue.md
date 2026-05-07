@@ -39,6 +39,48 @@ Phase Z: [Name] — pending
 
 ---
 
+## ⚖️ Verification Iron Law (always-on)
+
+This rule fires **at every phase**, not just before the PR. The moment you are about to claim *any* of these:
+
+> "done" · "fixed" · "implemented" · "tests pass" · "should work" · "works now" · "ready" · "complete"
+
+…you MUST first complete the four-step proof:
+
+1. **Name the proving command.** State exactly what command, with arguments, will demonstrate the claim.
+2. **Run it fresh.** Don't recall earlier output. Re-run now.
+3. **Read the full output and exit code.** Not just the last line. Look for warnings, skipped tests, silent fallbacks, exit code ≠ 0.
+4. **Match output to the claim.** If the output doesn't directly evidence the claim, the claim is invalid.
+
+If you cannot produce evidence, replace the success word with what's actually true: *"the code compiles, but I haven't run it"*, *"unit tests pass; integration suite not run"*, *"the failing test now passes; the original symptom is not yet retested"*.
+
+### Required evidence by claim type
+
+| Claim | Required evidence |
+|-------|-------------------|
+| "Bug fixed" | A test that reproduces the **original reported symptom** passes. Not a similar test — the original symptom. |
+| "Feature implemented" | Tests cover acceptance criteria from the issue, line-by-line. All pass. |
+| "Tests pass" | Full test command output + exit code 0, captured this turn. |
+| "Refactor safe" | Pre-refactor and post-refactor test output, both green. |
+| "Works in production-like env" | Docker / staging run output showing the actual user-facing behavior. |
+| "Requirements met" | Issue body / acceptance criteria walked through point-by-point with evidence per point. |
+
+### Common rationalizations to reject
+
+| Excuse | Reality |
+|--------|---------|
+| "Should work now" | Then run it. Belief is not evidence. |
+| "I'm confident" | Confidence is not output. |
+| "The agent reported success" | Agents lie. Verify the artifact, not the report. |
+| "Manually tested earlier" | Ad-hoc ≠ systematic. No record, can't re-run, doesn't count. |
+| "Tests pass" (without showing the run) | Then the run takes 10 seconds — do it. |
+| "It's a tiny change" | Tiny changes break things. Run the proof. |
+| "We're behind schedule" | A false "done" claim costs more than 30 seconds of verification. |
+
+> 💡 This rule supersedes phase boundaries. If Phase 4 says "commit when green" and you haven't watched it green this turn, you are not green.
+
+---
+
 ## Phase 0: Validation & Setup
 
 > 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
@@ -108,7 +150,24 @@ Cover at minimum:
 - UI & UX (for frontend work)
 - Tradeoffs and concerns
 
-Keep interviewing until you can describe the solution end-to-end without hand-waving. Then capture the resolved decisions in a comment on the issue (`gh issue comment <NUMBER>`).
+Keep interviewing until you can describe the solution end-to-end without hand-waving.
+
+### Alternatives & Out-of-Scope (REQUIRED, even for "obvious" issues)
+
+Before leaving Phase 1, produce two short artifacts and post them as a comment on the issue (`gh issue comment <NUMBER>`):
+
+**1. Alternatives considered (2–3 minimum).** For each, list:
+- Approach (one sentence)
+- Pros / Cons (2–3 bullets each)
+- Why chosen / why rejected
+
+This is not busywork. Articulating alternatives surfaces assumptions that are otherwise invisible, and it gives the user a real choice rather than a fait accompli. If you can only think of one approach, you haven't thought hard enough — keep going.
+
+**2. Out of Scope (v1).** An explicit, bulleted list of things this issue will *not* address. Examples: "Migrating existing data — separate issue", "Mobile layout — Phase 2", "Rate limiting on the new endpoint — handled by upstream gateway".
+
+The OOS list is load-bearing later: when scope-creep questions arise mid-implementation ("while we're in here, should we also…?"), the answer is *"see OOS list — separate issue."* Without this artifact, every such question reopens the design.
+
+Format the comment with collapsible `<details>` blocks if the alternatives section is long.
 
 ### Complexity Assessment
 After understanding, provide:
@@ -214,6 +273,16 @@ Before writing the implementation plan, define your testing approach:
 
 > 💡 **Tip**: If you can't identify test cases, the requirements aren't clear enough. Go back to Phase 1.
 
+### Plan Granularity Rules
+
+The plan is the contract that makes worktree-isolated subagent execution reliable and resumable. It MUST satisfy:
+
+- **Each task is a 2–5 minute unit of work.** If a task takes longer, split it. "Add user model" is not a task; "Add `User` class with `id`, `email`, `created_at` fields in `models/user.py`" is.
+- **Every task names exact file paths.** No "the relevant file" or "where appropriate".
+- **Every task names a verification command with expected output / exit code.** "Run `pytest tests/test_user.py::test_email_unique` — expect 1 passed, exit 0."
+- **No placeholders.** Banned phrases: `TBD`, `add error handling here`, `figure out X`, `etc.`, `as needed`. If you don't know yet, the plan isn't done — return to research.
+- **Decision rationale is captured inline.** For any non-obvious choice (library, pattern, data shape), include 2–3 sentences: *what* you chose, *what* you rejected, *why*. This is the lightweight decision journal — future readers (including you, debugging at 11pm) will thank you.
+
 ### Implementation Plan Structure
 Create a detailed plan with:
 
@@ -223,12 +292,24 @@ Create a detailed plan with:
 ### Summary
 [One paragraph describing the solution approach]
 
+### Architectural Decisions
+For each non-obvious choice:
+- **Decision:** [what was chosen]
+- **Rejected:** [the alternative(s)]
+- **Why:** [2–3 sentences of rationale — link to Phase 1 alternatives if applicable]
+
 ### Breaking Changes
 [None | List of breaking changes with migration steps]
 
+### Out of Scope (carry over from Phase 1)
+- [Item] — [where it will be handled instead]
+
 ### Tasks
-1. [ ] Task 1 - [file path] - [brief description]
-2. [ ] Task 2 - [file path] - [brief description]
+Each task is a 2–5 minute unit. Format:
+1. [ ] **[file path]** — [exact change]
+   - **Verify:** `<command>` → expect `<output / exit code>`
+2. [ ] **[file path]** — [exact change]
+   - **Verify:** `<command>` → expect `<output / exit code>`
 ...
 
 ### Testing Strategy
@@ -239,18 +320,18 @@ Create a detailed plan with:
 ### Test Plan (TDD)
 For each task requiring tests:
 
-| Task | Test File | Test Cases | Expected Failure |
-|------|-----------|------------|------------------|
-| Task 1 | `path/to/test` | `test case name` | `Expected error message` |
-| Task 2 | `path/to/test` | `test case name` | `Expected error message` |
+| Task | Test File | Test Cases | Expected Failure Output |
+|------|-----------|------------|------------------------|
+| Task 1 | `path/to/test` | `test case name` | `<exact error/assertion message expected in RED>` |
+| Task 2 | `path/to/test` | `test case name` | `<exact error/assertion message expected in RED>` |
 
-> ⚠️ If TDD not applicable, state: `TDD: N/A - [reason]`
+> ⚠️ If TDD not applicable, state: `TDD: N/A — [reason]`
 
 ### Files to Modify
-- `path/to/file` - [what changes]
+- `path/to/file` — [what changes]
 
 ### Files to Create
-- `path/to/new_file` - [purpose]
+- `path/to/new_file` — [purpose]
 
 ### Configuration Changes
 - Environment variables: [list or "None"]
@@ -259,6 +340,8 @@ For each task requiring tests:
 ### Documentation Updates
 - README/docs: [list or "None"]
 ```
+
+> 🚫 If any section contains "TBD", "as needed", or "etc.", the plan is **not** ready. Return to research or clarification.
 
 ---
 
@@ -288,7 +371,7 @@ Call **`ExitPlanMode`** with the finalized plan as the argument. This is the can
 
 ---
 
-## Phase 4: Implementation (Switch to Sonnet)
+## Phase 4: Implementation
 
 > 🔧 **Mode**: Full file access. Execution mode.
 >
@@ -312,6 +395,8 @@ Agent({
            and report the branch + final diff back.>"
 })
 ```
+
+> 🔒 **Subagent context discipline.** The subagent does NOT inherit this conversation's history. Treat the prompt as the agent's entire universe of context: include the approved plan verbatim, the relevant excerpts from the issue, the branch name, and the success criteria. Do *not* write "see prior discussion" or "as we agreed" — the subagent has seen neither. This is a feature, not a limitation: it forces you to specify the contract explicitly, which is what makes the work auditable.
 
 If you prefer to drive implementation yourself in the current session (e.g., for tight iteration with the user), fall back to a manual worktree:
 
@@ -475,18 +560,35 @@ When user requests to skip or cancel a task:
 >
 > 📌 **State**: Use `TaskCreate`/`TaskUpdate` to register and update phase tasks before proceeding.
 
+### Review Ordering (sequential, not parallel)
+
+Spec-compliance must be verified **before** code-quality review. A reviewer scrutinizing the *quality* of code that doesn't match the spec is wasted work — and worse, may legitimize an off-spec implementation. Run reviews in this order:
+
+1. **Self-review for spec compliance.** Walk the issue body / acceptance criteria / Phase 2 plan point-by-point against the diff. Note any drift. If anything is off-spec, fix it before continuing.
+2. **Code-quality review** (next subsection).
+3. **Silent-failure review** (after code quality).
+
 ### Code Review
+
+When invoking review skills, **pass the base and head SHAs plus the plan/requirements** so the skill reviews exactly the diff against the intended outcome — not the whole working tree, not implicit assumptions.
+
+```bash
+# Capture once, pass to every review skill
+BASE_SHA=$(git merge-base origin/main HEAD)
+HEAD_SHA=$(git rev-parse HEAD)
+```
+
 1. **Self-review** all changes for:
    - Bugs and logic errors
    - Code smells and complexity
    - Security vulnerabilities
    - Adherence to project conventions
 
-2. **You MUST invoke** the `Skill` tool with `skill: "pr-review-toolkit:code-reviewer"` for comprehensive review
+2. **You MUST invoke** the `Skill` tool with `skill: "pr-review-toolkit:code-reviewer"`. In the invocation prompt, include: base SHA, head SHA, the Phase 2 implementation plan, and the issue acceptance criteria. Wait for completion.
 
-3. **You MUST invoke** the `Skill` tool with `skill: "pr-review-toolkit:silent-failure-hunter"` to identify inadequate error handling
+3. **Then** invoke the `Skill` tool with `skill: "pr-review-toolkit:silent-failure-hunter"` to identify inadequate error handling. Pass the same SHA + plan context.
 
-> 💡 These two reviews are independent — launch them in parallel by issuing both `Skill` tool calls in a single message.
+> ⚠️ Do **not** run code-reviewer and silent-failure-hunter in parallel. Silent-failure analysis is most useful on code that has already passed structural review — running them concurrently means silent-failure-hunter may flag issues that code-reviewer would have caused you to refactor away.
 
 ### Address Review Findings
 - Fix all HIGH severity issues before proceeding
@@ -647,6 +749,22 @@ Please review and confirm:
 2. Verify issue auto-closed (or close manually)
 3. Confirm deployment triggered (if applicable)
 
+### Post-merge re-verification (REQUIRED)
+
+A green CI on the PR proves the *branch* worked. It does not prove the **merged result** works — squash merges, late conflicts, and post-merge hooks can change behavior. Before declaring the issue complete:
+
+```bash
+git checkout main
+git pull origin main
+
+# Re-run the same proving commands the PR used:
+# - the original-symptom reproduction (for bug fixes)
+# - the acceptance-criteria tests (for features)
+# - the full test suite
+```
+
+Apply the **Verification Iron Law**: name each command, run it fresh, read full output, match it to the claim. If anything is red on `main` that was green on the PR, escalate immediately — do not start cleanup.
+
 ### Task Status Update
 After merge, update checkboxes in the issue body and implementation plan comment:
 
@@ -692,7 +810,39 @@ Changes deployed: [Yes/No/Pending]
 
 ---
 
+## 🔬 Systematic Debugging (always-on)
+
+When a bug is the issue, when a test fails unexpectedly, or when something doesn't behave as designed: **do not start patching.** Run this method instead. It applies in Phase 4, Phase 5, Phase 6, and any time during Error Recovery.
+
+### Four phases, in order
+
+1. **Reproduce** — Get a deterministic, minimal reproduction. If you can't reproduce it, you can't fix it. Capture the exact command, inputs, environment, and observed-vs-expected output.
+2. **Trace** — Follow the data flow **backward from the symptom to the original trigger**. Read the relevant code top-to-bottom; do not jump to "the bug is probably in X" without evidence. Use logs, debugger, or `print` to confirm each link in the chain.
+3. **Hypothesize** — State the root cause as a falsifiable claim: *"If I change X, the symptom will disappear because Y."* If you can't articulate Y, you don't understand the bug yet — return to step 2.
+4. **Fix and verify** — Apply the minimum change that addresses the root cause. Then verify per the **Verification Iron Law** above (run the original-symptom reproduction; confirm it now passes; run the broader suite; confirm no regressions).
+
+### Hard stop-conditions
+
+- **After 3 failed fix attempts on the same bug, STOP.** Do not try a fourth patch. Step back and question one of: your reproduction (is it actually the same bug?), your trace (did you assume a step you didn't verify?), or the architecture (is the bug a symptom of a deeper design issue?). Re-enter at step 1 or escalate to the user.
+- **If you've proposed a fix before completing step 2, STOP.** Trace first, fix second. No exceptions.
+- **If the symptom disappears but you can't explain *why*, you have not fixed the bug.** A coincidence is not a fix. Continue tracing until you can state the causal chain.
+
+### Common rationalizations to reject
+
+| Excuse | Reality |
+|--------|---------|
+| "Quick fix for now, I'll investigate later" | Root causes don't go away. The symptom returns, often disguised. |
+| "One more attempt and I'll get it" (after 2 fails) | Three is the limit. Four is rationalization. |
+| "It must be a flaky test / cache / env" | Sometimes true; usually a comforting excuse. Prove flakiness with re-runs before dismissing. |
+| "I don't need to reproduce it, the stack trace is obvious" | Stack traces show *where* the symptom surfaced, not *why*. |
+| "I'll add a try/except and move on" | Catching an exception you don't understand hides the bug. |
+| "The symptom is gone, ship it" | If you can't explain the causal chain, you don't know what you fixed. |
+
+---
+
 ## Error Recovery
+
+> 💡 For diagnosing a bug or unexpected failure, use the **Systematic Debugging** section above before reading on.
 
 ### If Workflow Interrupted
 To resume later:
